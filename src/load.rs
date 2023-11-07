@@ -3,10 +3,8 @@
 use petgraph::{
     algo::has_path_connecting,
     graph::{self, NodeIndex},
-    visit::{Dfs, IntoEdges},
-    Directed,
-    Direction::Incoming,
-    Graph, Undirected,
+    visit::Dfs,
+    Directed, Graph, Undirected,
 };
 use rustc_hash::FxHashSet;
 
@@ -17,6 +15,10 @@ pub struct ObjVertex {
     pub texture: [f32; 2],
 }
 
+/// Return the indices from the `obj` file as a 1-directional vector where, in the case of
+/// triangular meshes, the chunks of `3` from the output `Vec` correspond to the faces.
+///
+/// This is used to create a `glium::IndexBuffer`
 pub fn get_indices(data: &obj::ObjData) -> Vec<u16> {
     data.objects
         .iter()
@@ -26,6 +28,7 @@ pub fn get_indices(data: &obj::ObjData) -> Vec<u16> {
         .collect()
 }
 
+/// Parse the byte stream from the obj file to an ObjData result
 pub fn get_objdata(data: &[u8]) -> Result<obj::ObjData, obj::ObjError> {
     let mut data = ::std::io::BufReader::new(data);
     obj::ObjData::load_buf(&mut data)
@@ -54,11 +57,15 @@ pub fn load_wavefront(data: &obj::ObjData) -> petgraph::Graph<ObjVertex, f32, Di
         // add unseen positions as new nodes in vertex_graph
         for v in indices.iter().filter(|v| seen_vertices.insert(v.0)) {
             let position = data.position[v.0];
-            let texture = v.1.map(|index| data.texture[index]);
-            let normal = v.2.map(|index| data.normal[index]);
 
+            let texture = v.1.map(|index| data.texture[index]);
             let texture = texture.unwrap_or([0.0; 2]);
-            let normal = normal.unwrap_or([0.0; 3]);
+
+            // this is used when the normals are specified by the faces in the obj
+            let normal = v.2.map(|index| data.normal[index]);
+            let _normal = normal.unwrap_or([0.0; 3]);
+
+            // this is used when the normals are specified by `vn` in the obj
             let normal = data.normal[v.0];
 
             *vertex_graph
@@ -70,7 +77,7 @@ pub fn load_wavefront(data: &obj::ObjData) -> petgraph::Graph<ObjVertex, f32, Di
             };
         }
 
-        // add all edges, avoiding duplicates
+        // add all edges between vertices in the triangle
         // (1, 2, 3) + (2, 3, 1) -> (1, 2), (2, 3), (3, 1)
         for (v1, v2) in indices.iter().zip(indices.iter().cycle().skip(1)) {
             // parent node should have more incoming edges than child
@@ -79,6 +86,7 @@ pub fn load_wavefront(data: &obj::ObjData) -> petgraph::Graph<ObjVertex, f32, Di
             un_vertex_graph.update_edge(parent_node, child_node, 0.0);
         }
     }
+
     let mut seen_vertices = FxHashSet::<NodeIndex>::default();
     let mut start_vertices = FxHashSet::<NodeIndex>::default();
     for start in un_vertex_graph.node_indices() {

@@ -16,7 +16,26 @@ fn main() {
         .expect("xx");
     let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
+    // load assets
     let data = load::get_objdata(include_bytes!("../assets/teapot.obj")).unwrap();
+    // TODO: move texture loading somewhere else
+    let texture = image::load(
+        Cursor::new(&include_bytes!("../assets/Epona_grp.png")),
+        image::ImageFormat::Png,
+    )
+    .unwrap()
+    .to_rgba8();
+    let image_dimensions = texture.dimensions();
+    let texture =
+        glium::texture::RawImage2d::from_raw_rgba_reversed(&texture.into_raw(), image_dimensions);
+    let diffuse_texture = glium::texture::SrgbTexture2d::new(&display, texture).unwrap();
+
+    // output gif, used when recording in camera
+    // TODO: move to camera
+    let mut image = File::create("target/output.gif").unwrap();
+    let mut encoder = Encoder::new(&mut image, 800, 480, &[]).unwrap();
+    encoder.set_repeat(Repeat::Infinite).unwrap();
+
     let vertex_graph = load::load_wavefront(&data);
 
     let mut new_vertex_graph = petgraph::Graph::<ObjVertex, f32>::new();
@@ -24,7 +43,7 @@ fn main() {
         new_vertex_graph.add_node(ObjVertex::default());
     }
 
-    let mut start_idx = 257u32;
+    let mut start_idx = 1u32;
     let a = vertex_graph.node_indices().nth(start_idx as usize).unwrap();
     new_vertex_graph.node_weights_mut().for_each(|node| {
         *node = ObjVertex {
@@ -34,18 +53,24 @@ fn main() {
             texture: [-1.0, -1.0],
         }
     });
-    let b = algo::bellman_ford(&vertex_graph, a).unwrap();
+
+    // add the nodes of the longest continous path starting at `start_idx` to the initialized
+    // vertex graph such that only this path's nodes will be rendered.
+    let bellman_ford = algo::bellman_ford(&vertex_graph, a).unwrap();
     let mut prev = NodeIndex::from(start_idx);
-    while let Some((x, _)) = b
+
+    // parse the predecessors field to step along the path from `start_idx`
+    // TODO: explain `idx` and `predecessor` relationship
+    while let Some((idx, _)) = bellman_ford
         .predecessors
         .iter()
         .enumerate()
-        .find(|(_, &val)| val == Some(NodeIndex::from(prev)))
+        .find(|(_, &predecessor)| predecessor == Some(prev))
     {
         *new_vertex_graph.node_weight_mut(prev).unwrap() = *vertex_graph.node_weight(prev).unwrap();
-        prev = NodeIndex::from(x as u32);
+        prev = NodeIndex::from(idx as u32);
     }
-    println!("{:?}", prev);
+    // the continous path's vertex_buffer
     let vertex_buffer_2 = VertexBuffer::new(
         &display,
         &new_vertex_graph
@@ -56,6 +81,7 @@ fn main() {
     )
     .unwrap();
 
+    // the actual object's `VertexBuffer`
     let vertex_buffer = VertexBuffer::new(
         &display,
         &vertex_graph
@@ -66,21 +92,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut image = File::create("target/output.gif").unwrap();
-    let mut encoder = Encoder::new(&mut image, 800, 480, &[]).unwrap();
-    encoder.set_repeat(Repeat::Infinite).unwrap();
-
-    let texture = image::load(
-        Cursor::new(&include_bytes!("../assets/Epona_grp.png")),
-        image::ImageFormat::Png,
-    )
-    .unwrap()
-    .to_rgba8();
-
-    let image_dimensions = texture.dimensions();
-    let texture =
-        glium::texture::RawImage2d::from_raw_rgba_reversed(&texture.into_raw(), image_dimensions);
-    let diffuse_texture = glium::texture::SrgbTexture2d::new(&display, texture).unwrap();
+    // stores the faces of `vertex_buffer`
     let indices = glium::IndexBuffer::new(
         &display,
         glium::index::PrimitiveType::TrianglesList,
@@ -89,18 +101,17 @@ fn main() {
     .unwrap();
 
     let mut camera = camera::CameraState::new();
-
+    // TODO: this struct makes no sense
     let app = frame::Application::new(indices, diffuse_texture);
 
+    // rendering loop
     event_loop
         .run(move |event, window_target| {
             match event {
                 winit::event::Event::WindowEvent { event, .. } => match event {
-                    winit::event::WindowEvent::CloseRequested => {
-                        window_target.exit();
-                    }
+                    winit::event::WindowEvent::CloseRequested => window_target.exit(),
 
-                    // We now need to render everything in response to a RedrawRequested event due to the animation
+                    // render everything
                     winit::event::WindowEvent::RedrawRequested => {
                         start_idx = (start_idx + 1) % vertex_graph.node_count() as u32;
 
@@ -112,13 +123,15 @@ fn main() {
                             &mut target,
                             &shader::red_shader(&display),
                             &vertex_buffer_2,
-                        );
+                        )
+                        .unwrap();
                         app.draw_frame(
                             &mut camera,
                             &mut target,
                             &shader::default_program(&display),
                             &vertex_buffer,
-                        );
+                        )
+                        .unwrap();
                         target.finish().unwrap();
                         if camera.is_recording() {
                             let mut image: glium::texture::RawImage2d<'_, u8> =
@@ -132,19 +145,18 @@ fn main() {
                             encoder.write_frame(&frame).unwrap();
                         }
                     }
-                    // Because glium doesn't know about windows we need to resize the display
-                    // when the window's size has changed.
+                    // resize the display when the window's size has changed
                     winit::event::WindowEvent::Resized(window_size) => {
-                        display.resize(window_size.into());
+                        display.resize(window_size.into())
                     }
-                    // all keyboard inputs are associated to camera movements at this point
+                    // all keyboard inputs are associated to camera movements at this point, so
+                    // just pass the keyboard input to camera
                     winit::event::WindowEvent::KeyboardInput { event, .. } => {
-                        camera.process_input(&event);
+                        camera.process_input(&event)
                     }
                     _ => (),
                 },
-                // By requesting a redraw in response to a AboutToWait event we get continuous rendering.
-                // For applications that only change due to user input you could remove this handler.
+                // ensures continuous rendering
                 winit::event::Event::AboutToWait => {
                     window.request_redraw();
                 }

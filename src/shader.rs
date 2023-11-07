@@ -1,6 +1,7 @@
 use glium::{program, Display, Program};
 use glutin::surface::WindowSurface;
 
+// TODO: break up fns for vertex, fragment shaders
 pub fn red_shader(display: &Display<WindowSurface>) -> Program {
     program! (display,
         140 => { vertex: "
