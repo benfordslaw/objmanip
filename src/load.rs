@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
 use petgraph::{
-    algo::has_path_connecting,
     graph::{self, NodeIndex},
-    visit::Dfs,
     Directed, Graph, Undirected,
 };
 use rustc_hash::FxHashSet;
@@ -63,6 +61,9 @@ pub fn load_wavefront(data: &obj::ObjData) -> VertexGraph {
             let texture = v.1.map(|index| data.texture[index]);
             let texture = texture.unwrap_or([0.0; 2]);
 
+            // TODO: need some way of determining which format the `obj` is using to specify
+            // normals
+            //
             // this is used when the normals are specified by the faces in the obj
             let normal = v.2.map(|index| data.normal[index]);
             let _normal = normal.unwrap_or([0.0; 3]);
@@ -89,26 +90,7 @@ pub fn load_wavefront(data: &obj::ObjData) -> VertexGraph {
         }
     }
 
-    let mut seen_vertices = FxHashSet::<NodeIndex>::default();
-    let mut start_vertices = FxHashSet::<NodeIndex>::default();
-    for start in un_vertex_graph.node_indices() {
-        if seen_vertices.contains(&start) {
-            continue;
-        }
-        start_vertices.insert(start);
-        let mut dfs = Dfs::new(&vertex_graph, start);
-        let mut prv = start;
-        while let Some(visited) = dfs.next(&un_vertex_graph) {
-            if !has_path_connecting(&vertex_graph, visited, prv, None)
-                && un_vertex_graph.contains_edge(prv, visited)
-            {
-                seen_vertices.insert(visited);
-                vertex_graph.update_edge(prv, visited, -1.0);
-            }
-            prv = visited;
-        }
-    }
-    println!("{:?}", start_vertices);
-
-    VertexGraph::new(vertex_graph)
+    let mut vertex_graph = VertexGraph::new(vertex_graph);
+    vertex_graph.add_dag_edges(&un_vertex_graph);
+    vertex_graph
 }

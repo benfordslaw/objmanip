@@ -1,10 +1,7 @@
 use std::{fs::File, io::Cursor};
 
 use gif::{Encoder, Repeat};
-use glium::{Surface, VertexBuffer};
-use glutin::display::GetGlDisplay;
-use load::ObjVertex;
-use petgraph::{algo, graph::NodeIndex};
+use glium::Surface;
 
 mod camera;
 mod frame;

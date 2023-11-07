@@ -1,16 +1,27 @@
 use glium::{vertex::BufferCreationError, Display, VertexBuffer};
 use glutin::surface::WindowSurface;
-use petgraph::{algo, graph, Graph};
+use petgraph::{
+    algo::{self, has_path_connecting},
+    graph,
+    visit::Dfs,
+    Graph, Undirected,
+};
+use rustc_hash::FxHashSet;
 
 use crate::load::ObjVertex;
 
 pub struct VertexGraph {
-    pub graph: Graph<ObjVertex, f32>,
+    graph: Graph<ObjVertex, f32>,
+    components: FxHashSet<graph::NodeIndex>,
 }
 
+/// Directed graph
 impl VertexGraph {
     pub fn new(g: Graph<ObjVertex, f32>) -> Self {
-        Self { graph: g }
+        Self {
+            graph: g,
+            components: FxHashSet::default(),
+        }
     }
 
     /// Returns a `VertexBuffer` containing the `ObjVertex` node weights from this `VertexGraph`
@@ -26,6 +37,34 @@ impl VertexGraph {
                 .cloned()
                 .collect::<Vec<ObjVertex>>(),
         )
+    }
+
+    /// Use the undirected edges from `undirected` to add directed edges in the order determined
+    /// by depth first search.
+    ///
+    /// Assigns the start indices of each disconnected component to `VertexGraph::components`.
+    pub fn add_dag_edges(&mut self, undirected: &Graph<ObjVertex, f32, Undirected>) {
+        let mut seen_vertices = FxHashSet::<graph::NodeIndex>::default();
+        let mut start_vertices = FxHashSet::<graph::NodeIndex>::default();
+        for start in undirected.node_indices() {
+            if seen_vertices.contains(&start) {
+                continue;
+            }
+            start_vertices.insert(start);
+            let mut dfs = Dfs::new(&self.graph, start);
+            let mut prv = start;
+            while let Some(visited) = dfs.next(undirected) {
+                if !has_path_connecting(&self.graph, visited, prv, None)
+                    && undirected.contains_edge(prv, visited)
+                {
+                    seen_vertices.insert(visited);
+                    self.graph.update_edge(prv, visited, -1.0);
+                }
+                prv = visited;
+            }
+        }
+
+        self.components = start_vertices;
     }
 
     /// Returns a `VertexBuffer` containing only the `ObjVertex` node weights from this
