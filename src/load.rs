@@ -8,6 +8,8 @@ use petgraph::{
 };
 use rustc_hash::FxHashSet;
 
+use crate::graph::VertexGraph;
+
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ObjVertex {
     pub position: [f32; 3],
@@ -36,7 +38,7 @@ pub fn get_objdata(data: &[u8]) -> Result<obj::ObjData, obj::ObjError> {
 
 /// Returns an undirected graph where the nodes are `ObjVertex` and connected if they are
 /// connected in the obj file.
-pub fn load_wavefront(data: &obj::ObjData) -> petgraph::Graph<ObjVertex, f32, Directed> {
+pub fn load_wavefront(data: &obj::ObjData) -> VertexGraph {
     glium::implement_vertex!(ObjVertex, position, normal, texture);
 
     let mut vertex_graph: Graph<ObjVertex, f32, Directed> = graph::Graph::new();
@@ -108,5 +110,5 @@ pub fn load_wavefront(data: &obj::ObjData) -> petgraph::Graph<ObjVertex, f32, Di
     }
     println!("{:?}", start_vertices);
 
-    vertex_graph
+    VertexGraph::new(vertex_graph)
 }

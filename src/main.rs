@@ -2,11 +2,13 @@ use std::{fs::File, io::Cursor};
 
 use gif::{Encoder, Repeat};
 use glium::{Surface, VertexBuffer};
+use glutin::display::GetGlDisplay;
 use load::ObjVertex;
 use petgraph::{algo, graph::NodeIndex};
 
 mod camera;
 mod frame;
+mod graph;
 mod load;
 mod shader;
 
@@ -37,60 +39,8 @@ fn main() {
     encoder.set_repeat(Repeat::Infinite).unwrap();
 
     let vertex_graph = load::load_wavefront(&data);
-
-    let mut new_vertex_graph = petgraph::Graph::<ObjVertex, f32>::new();
-    for _ in 0..data.position.len() {
-        new_vertex_graph.add_node(ObjVertex::default());
-    }
-
-    let mut start_idx = 1u32;
-    let a = vertex_graph.node_indices().nth(start_idx as usize).unwrap();
-    new_vertex_graph.node_weights_mut().for_each(|node| {
-        *node = ObjVertex {
-            position: [0.0; 3],
-            normal: [0.0; 3],
-            // -1 signals to red_shader to discard fragment
-            texture: [-1.0, -1.0],
-        }
-    });
-
-    // add the nodes of the longest continous path starting at `start_idx` to the initialized
-    // vertex graph such that only this path's nodes will be rendered.
-    let bellman_ford = algo::bellman_ford(&vertex_graph, a).unwrap();
-    let mut prev = NodeIndex::from(start_idx);
-
-    // parse the predecessors field to step along the path from `start_idx`
-    // TODO: explain `idx` and `predecessor` relationship
-    while let Some((idx, _)) = bellman_ford
-        .predecessors
-        .iter()
-        .enumerate()
-        .find(|(_, &predecessor)| predecessor == Some(prev))
-    {
-        *new_vertex_graph.node_weight_mut(prev).unwrap() = *vertex_graph.node_weight(prev).unwrap();
-        prev = NodeIndex::from(idx as u32);
-    }
-    // the continous path's vertex_buffer
-    let vertex_buffer_2 = VertexBuffer::new(
-        &display,
-        &new_vertex_graph
-            .raw_nodes()
-            .iter()
-            .map(move |node| node.weight)
-            .collect::<Vec<ObjVertex>>(),
-    )
-    .unwrap();
-
-    // the actual object's `VertexBuffer`
-    let vertex_buffer = VertexBuffer::new(
-        &display,
-        &vertex_graph
-            .raw_nodes()
-            .iter()
-            .map(move |node| node.weight)
-            .collect::<Vec<ObjVertex>>(),
-    )
-    .unwrap();
+    let continuous_buffer = vertex_graph.continuous_path_from(1u32, &display).unwrap();
+    let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
 
     // stores the faces of `vertex_buffer`
     let indices = glium::IndexBuffer::new(
@@ -101,7 +51,7 @@ fn main() {
     .unwrap();
 
     let mut camera = camera::CameraState::new();
-    // TODO: this struct makes no sense
+    // TODO: this struct makes little sense
     let app = frame::Application::new(indices, diffuse_texture);
 
     // rendering loop
@@ -113,16 +63,16 @@ fn main() {
 
                     // render everything
                     winit::event::WindowEvent::RedrawRequested => {
-                        start_idx = (start_idx + 1) % vertex_graph.node_count() as u32;
-
                         let mut target = display.draw();
                         camera.update();
                         target.clear_color_and_depth((0.2, 0.2, 1.0, 1.0), 1.0);
+                        // TODO: maybe the vertex_buffer input should be a vec to allow
+                        // rendering of multiple vertex buffers on the same frame
                         app.draw_frame(
                             &mut camera,
                             &mut target,
                             &shader::red_shader(&display),
-                            &vertex_buffer_2,
+                            &continuous_buffer,
                         )
                         .unwrap();
                         app.draw_frame(
@@ -133,6 +83,8 @@ fn main() {
                         )
                         .unwrap();
                         target.finish().unwrap();
+
+                        // TODO: move to camera
                         if camera.is_recording() {
                             let mut image: glium::texture::RawImage2d<'_, u8> =
                                 display.read_front_buffer().unwrap();
