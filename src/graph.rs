@@ -67,17 +67,42 @@ impl VertexGraph {
         self.components = start_vertices;
     }
 
-    /// Returns a `VertexBuffer` containing only the `ObjVertex` node weights from this
-    /// `VertexGraph` along the longest continuous path from `start_idx`
-    pub fn continuous_path_from(
+    /// get the 3D position of the `ObjVertex` at `idx` in this graph
+    fn position_at(&self, idx: graph::NodeIndex) -> [f32; 3] {
+        self.graph.node_weight(idx).unwrap().position
+    }
+
+    /// Convert the given `path` to a Vec of polar offsets from each `ObjVertex` to the next.
+    pub fn path_to_polar_offs(&self, path: &[graph::NodeIndex]) -> Vec<[f32; 3]> {
+        let mut normalized = Vec::new();
+
+        let mut prv = path
+            .iter()
+            .next()
+            .map(|idx| self.position_at(*idx))
+            .unwrap();
+        for next in path.iter().map(|idx| self.position_at(*idx)) {
+            // cartesian offset
+            let x = next[0] - prv[0];
+            let y = next[1] - prv[1];
+            let z = next[2] - prv[2];
+
+            // convert to polar
+            let r = (x.powi(2) + y.powi(2) + z.powi(2)).sqrt();
+            let long = f32::atan2(y, x);
+            let lat = (z / r).acos();
+
+            normalized.push([r, long, lat]);
+            prv = next;
+        }
+        normalized
+    }
+
+    pub fn path_to_buffer(
         &self,
-        start_idx: u32,
+        path: &[graph::NodeIndex],
         display: &Display<WindowSurface>,
     ) -> Result<VertexBuffer<ObjVertex>, BufferCreationError> {
-        let start_node = graph::NodeIndex::from(start_idx);
-        let bellman_ford = algo::bellman_ford(&self.graph, start_node).unwrap();
-        let mut prev = graph::NodeIndex::from(start_idx);
-
         let mut path_vertices = vec![
             ObjVertex {
                 position: [0.0; 3],
@@ -87,6 +112,23 @@ impl VertexGraph {
             self.graph.node_count()
         ];
 
+        for idx in path.iter() {
+            *path_vertices.get_mut(idx.index()).unwrap() = *self.graph.node_weight(*idx).unwrap();
+        }
+
+        VertexBuffer::new(display, &path_vertices)
+    }
+
+    /// Return the longest continuous path from `start_idx` in this graph
+    pub fn continuous_path_from(&self, start_idx: u32) -> Vec<graph::NodeIndex> {
+        let start_node = graph::NodeIndex::from(start_idx);
+
+        // bellman ford is able to return the longest continuous paths given negative edge
+        // weights and a bit of annoying parsing
+        let bellman_ford = algo::bellman_ford(&self.graph, start_node).unwrap();
+        let mut prev = graph::NodeIndex::from(start_idx);
+
+        let mut path_vertices = Vec::new();
         // parse the predecessors field to step along the path from `start_idx`
         // TODO: explain `idx` and `predecessor` relationship
         while let Some((idx, _)) = bellman_ford
@@ -95,21 +137,30 @@ impl VertexGraph {
             .enumerate()
             .find(|(_, &predecessor)| predecessor == Some(prev))
         {
-            *path_vertices.get_mut(prev.index()).unwrap() = *self.graph.node_weight(prev).unwrap();
+            path_vertices.push(prev);
             prev = graph::NodeIndex::from(idx as u32);
         }
 
-        VertexBuffer::new(display, &path_vertices)
+        path_vertices
     }
 
-    pub fn connected_subgraphs(
+    /// Return the polar offsets along the path of each connected subgraph
+    pub fn connected_subgraph_polar_offs(&self) -> Vec<Vec<[f32; 3]>> {
+        self.components
+            .iter()
+            .map(|idx| self.path_to_polar_offs(&self.continuous_path_from(idx.index() as u32)))
+            .collect()
+    }
+
+    /// Return a `VertexBuffer` for each connected subgraph
+    pub fn connected_subgraph_buffers(
         &self,
         display: &Display<WindowSurface>,
     ) -> Vec<VertexBuffer<ObjVertex>> {
         self.components
             .iter()
-            .map(|x| {
-                self.continuous_path_from(x.index() as u32, display)
+            .map(|idx| {
+                self.path_to_buffer(&self.continuous_path_from(idx.index() as u32), display)
                     .unwrap()
             })
             .collect()

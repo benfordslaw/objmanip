@@ -1,7 +1,8 @@
-use glium::{uniform, DrawParameters, Frame, Program, Surface, VertexBuffer};
+use glium::{uniform, DrawParameters, Frame, PolygonMode, Program, Surface, VertexBuffer};
 
 use crate::{camera::CameraState, load::ObjVertex};
 
+// TODO: docs
 pub struct Application {
     index_buffer: glium::IndexBuffer<u16>,
     params: DrawParameters<'static>,
@@ -24,6 +25,7 @@ impl Application {
                     ..Default::default()
                 },
                 blend: glium::Blend::alpha_blending(),
+                polygon_mode: PolygonMode::Line,
                 ..Default::default()
             },
             light: [1.4, 0.4, -0.7f32],

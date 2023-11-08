@@ -35,7 +35,9 @@ fn main() {
     encoder.set_repeat(Repeat::Infinite).unwrap();
 
     let vertex_graph = load::load_wavefront(&data);
-    let connected_subgraphs_vec = vertex_graph.connected_subgraphs(&display);
+    let connected_subgraphs_vec = vertex_graph.connected_subgraph_buffers(&display);
+
+    // cycle only used right now to be able to visualize each connected component in draw
     let mut connected_subgraphs = connected_subgraphs_vec.iter().cycle();
     let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
 
