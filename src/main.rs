@@ -1,10 +1,17 @@
 use std::{fs::File, io::Cursor};
 
+use conversion::CartesianCoords;
 use frame::ShaderBuffer;
 use gif::{Encoder, Repeat};
-use glium::Surface;
+use glium::{Surface, VertexBuffer};
+
+use load::ObjVertex;
+use markov::{self, Chain};
+
+use crate::conversion::PolarCoords;
 
 mod camera;
+mod conversion;
 mod frame;
 mod graph;
 mod load;
@@ -35,10 +42,21 @@ fn main() {
     encoder.set_repeat(Repeat::Infinite).unwrap();
 
     let vertex_graph = load::load_wavefront(&data);
-    let connected_subgraphs_vec = vertex_graph.connected_subgraph_buffers(&display);
 
-    // cycle only used right now to be able to visualize each connected component in draw
-    let mut connected_subgraphs = connected_subgraphs_vec.iter().cycle();
+    let mut chain: Chain<String> = Chain::new();
+    for polar_off in vertex_graph.connected_subgraph_polar_offs() {
+        chain.feed(polar_off);
+    }
+    let gen_polar: Vec<PolarCoords> = chain.generate().iter().map(PolarCoords::from).collect();
+
+    let mut run_pos = CartesianCoords::default();
+    let mut new_vertices = Vec::<ObjVertex>::new();
+
+    for gen_coord in &gen_polar {
+        run_pos.sum_with(&CartesianCoords::from(gen_coord));
+        new_vertices.push(run_pos.clone().into());
+    }
+    let generated_buffer = VertexBuffer::new(&display, &new_vertices).unwrap();
     let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
 
     // stores the faces of `vertex_buffer`
@@ -66,7 +84,7 @@ fn main() {
                         target.clear_color_and_depth((0.2, 0.2, 1.0, 1.0), 1.0);
 
                         let shader_buffers = &[
-                            &ShaderBuffer::new(connected_subgraphs.next().unwrap(), &red_shader),
+                            &ShaderBuffer::new(&generated_buffer, &red_shader),
                             &ShaderBuffer::new(&vertex_buffer, &default_shader),
                         ];
 

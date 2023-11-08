@@ -8,7 +8,10 @@ use petgraph::{
 };
 use rustc_hash::FxHashSet;
 
-use crate::load::ObjVertex;
+use crate::{
+    conversion::{CartesianCoords, PolarCoords},
+    load::ObjVertex,
+};
 
 /// Directed graph
 pub struct VertexGraph {
@@ -73,27 +76,23 @@ impl VertexGraph {
     }
 
     /// Convert the given `path` to a Vec of polar offsets from each `ObjVertex` to the next.
-    pub fn path_to_polar_offs(&self, path: &[graph::NodeIndex]) -> Vec<[f32; 3]> {
+    pub fn path_to_polar_offs(&self, path: &[graph::NodeIndex]) -> Vec<String> {
         let mut normalized = Vec::new();
 
         let mut prv = path
             .iter()
             .next()
-            .map(|idx| self.position_at(*idx))
+            .map(|idx| CartesianCoords::from(self.position_at(*idx)))
             .unwrap();
         for next in path.iter().map(|idx| self.position_at(*idx)) {
-            // cartesian offset
-            let x = next[0] - prv[0];
-            let y = next[1] - prv[1];
-            let z = next[2] - prv[2];
+            let mut coords = CartesianCoords::from(next);
+            coords.subtract_with(&prv);
 
-            // convert to polar
-            let r = (x.powi(2) + y.powi(2) + z.powi(2)).sqrt();
-            let long = f32::atan2(y, x);
-            let lat = (z / r).acos();
+            let polar_coords = PolarCoords::from(&coords);
 
-            normalized.push([r, long, lat]);
-            prv = next;
+            normalized.push(polar_coords.to_string());
+
+            prv = CartesianCoords::from(next);
         }
         normalized
     }
@@ -145,7 +144,7 @@ impl VertexGraph {
     }
 
     /// Return the polar offsets along the path of each connected subgraph
-    pub fn connected_subgraph_polar_offs(&self) -> Vec<Vec<[f32; 3]>> {
+    pub fn connected_subgraph_polar_offs(&self) -> Vec<Vec<String>> {
         self.components
             .iter()
             .map(|idx| self.path_to_polar_offs(&self.continuous_path_from(idx.index() as u32)))

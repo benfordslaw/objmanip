@@ -6,13 +6,23 @@ use petgraph::{
 };
 use rustc_hash::FxHashSet;
 
-use crate::graph::VertexGraph;
+use crate::{conversion::CartesianCoords, graph::VertexGraph};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ObjVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub texture: [f32; 2],
+}
+
+impl From<CartesianCoords> for ObjVertex {
+    fn from(c: CartesianCoords) -> Self {
+        Self {
+            position: c.into(),
+            normal: [0.0; 3],
+            texture: [0.0; 2],
+        }
+    }
 }
 
 /// Return the indices from the `obj` file as a 1-directional vector where, in the case of
