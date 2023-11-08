@@ -21,11 +21,11 @@ impl From<CartesianCoords> for ObjVertex {
 /// triangular meshes, the chunks of `3` from the output `Vec` correspond to the faces.
 ///
 /// This is used to create a `glium::IndexBuffer`
-pub fn get_indices(data: &obj::ObjData) -> Vec<u16> {
+pub fn get_indices(data: &obj::ObjData) -> Vec<u32> {
     data.objects
         .iter()
         .flat_map(move |object| object.groups.iter().flat_map(|g| g.polys.iter()))
-        .flat_map(|obj::SimplePolygon(indices)| indices.iter().map(|x| u16::try_from(x.0).unwrap()))
+        .flat_map(|obj::SimplePolygon(indices)| indices.iter().map(|x| u32::try_from(x.0).unwrap()))
         .skip(6) // investigate this skipping (mattered for teapot)
         .collect()
 }

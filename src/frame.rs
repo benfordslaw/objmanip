@@ -5,7 +5,6 @@ use crate::{camera::State, load::ObjVertex};
 
 // TODO: docs
 pub struct Application {
-    index_buffer: glium::IndexBuffer<u16>,
     params: DrawParameters<'static>,
     light: [f32; 3],
     diffuse_texture: glium::texture::SrgbTexture2d,
@@ -13,12 +12,8 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(
-        i_buffer: glium::IndexBuffer<u16>,
-        d_texture: glium::texture::SrgbTexture2d,
-    ) -> Self {
+    pub fn new(d_texture: glium::texture::SrgbTexture2d) -> Self {
         Self {
-            index_buffer: i_buffer,
             params: glium::DrawParameters {
                 depth: glium::Depth {
                     test: glium::DepthTest::IfLess,
@@ -52,8 +47,8 @@ impl Application {
         for shader_buffer in shader_buffers {
             target
                 .draw(
-                    shader_buffer.buffer,
-                    &self.index_buffer,
+                    shader_buffer.vertex_buffer,
+                    shader_buffer.index_buffer,
                     shader_buffer.shader,
                     &uniforms,
                     &self.params,
@@ -63,17 +58,23 @@ impl Application {
     }
 }
 
-/// Simple struct to link buffers to shaders in order to easily pass pairs into `draw_frame`
+/// Simple struct to link buffers to shaders in order to easily pass into `draw_frame`
 pub struct ShaderBuffer<'a> {
-    buffer: &'a VertexBuffer<ObjVertex>,
+    vertex_buffer: &'a VertexBuffer<ObjVertex>,
+    index_buffer: &'a glium::IndexBuffer<u32>,
     shader: &'a Program,
 }
 
 impl<'a> ShaderBuffer<'_> {
-    pub fn new(b: &'a VertexBuffer<ObjVertex>, p: &'a Program) -> ShaderBuffer<'a> {
+    pub fn new(
+        vertex_buffer: &'a VertexBuffer<ObjVertex>,
+        index_buffer: &'a glium::IndexBuffer<u32>,
+        shader: &'a Program,
+    ) -> ShaderBuffer<'a> {
         ShaderBuffer {
-            buffer: b,
-            shader: p,
+            vertex_buffer,
+            index_buffer,
+            shader,
         }
     }
 }

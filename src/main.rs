@@ -3,7 +3,7 @@ use std::io::Cursor;
 
 use conversion::CartesianCoords;
 use frame::ShaderBuffer;
-use glium::{Surface, VertexBuffer};
+use glium::{IndexBuffer, Surface, VertexBuffer};
 
 use load::ObjVertex;
 use markov::{self, Chain};
@@ -41,16 +41,7 @@ fn main() {
     for polar_off in vertex_graph.connected_subgraph_polar_offs() {
         chain.feed(polar_off);
     }
-    let gen_polar: Vec<PolarCoords> = chain.generate().iter().map(PolarCoords::from).collect();
 
-    let mut run_pos = CartesianCoords::default();
-    let mut new_vertices = Vec::<ObjVertex>::new();
-
-    for gen_coord in &gen_polar {
-        run_pos.sum_with(&CartesianCoords::from(gen_coord));
-        new_vertices.push(run_pos.clone().into());
-    }
-    let generated_buffer = VertexBuffer::new(&display, &new_vertices).unwrap();
     let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
 
     // stores the faces of `vertex_buffer`
@@ -61,7 +52,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut app = frame::Application::new(indices, diffuse_texture);
+    let mut app = frame::Application::new(diffuse_texture);
     let red_shader = shader::red(&display);
     let default_shader = shader::full(&display);
 
@@ -77,9 +68,31 @@ fn main() {
                         let mut target = display.draw();
                         target.clear_color_and_depth((0.2, 0.2, 1.0, 1.0), 1.0);
 
+                        let gen_polar: Vec<PolarCoords> =
+                            chain.generate().iter().map(PolarCoords::from).collect();
+                        let mut run_pos = CartesianCoords::default();
+                        let mut new_vertices = Vec::<ObjVertex>::new();
+                        for gen_coord in &gen_polar {
+                            run_pos.sum_with(&CartesianCoords::from(gen_coord));
+                            new_vertices.push(run_pos.clone().into());
+                        }
+                        let generated_buffer = VertexBuffer::new(&display, &new_vertices).unwrap();
+                        let index_vec: Vec<u32> =
+                            (0u32..u32::try_from(new_vertices.len()).unwrap().saturating_sub(2))
+                                .map(|idx| [idx, idx + 1, idx + 2])
+                                .flatten()
+                                .collect();
+                        let generated_indices = glium::IndexBuffer::new(
+                            &display,
+                            glium::index::PrimitiveType::TrianglesList,
+                            &index_vec,
+                        )
+                        .unwrap();
+                        // TODO: create new index_buffer
+
                         let shader_buffers = &[
-                            &ShaderBuffer::new(&generated_buffer, &red_shader),
-                            &ShaderBuffer::new(&vertex_buffer, &default_shader),
+                            &ShaderBuffer::new(&generated_buffer, &generated_indices, &red_shader),
+                            &ShaderBuffer::new(&vertex_buffer, &indices, &default_shader),
                         ];
 
                         app.draw_frame(&mut target, shader_buffers, &display);
