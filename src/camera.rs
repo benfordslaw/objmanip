@@ -1,4 +1,8 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, fs::File};
+
+use gif::Encoder;
+use glium::Display;
+use glutin::surface::WindowSurface;
 
 pub struct State {
     aspect_ratio: f32,
@@ -7,6 +11,7 @@ pub struct State {
     camera_t: f32,
     radius: f32,
     recording_since: f32,
+    encoder: Encoder<File>,
 
     rotating_right: bool,
     rotating_left: bool,
@@ -25,6 +30,8 @@ impl State {
             camera_t: PI / 2.0,
             radius: 1.0,
             recording_since: -1.0,
+            encoder: Encoder::new(File::create("target/output.gif").unwrap(), 800, 400, &[])
+                .unwrap(),
 
             // TODO: restructure these to avoid so many bools
             rotating_right: false,
@@ -107,7 +114,8 @@ impl State {
         ]
     }
 
-    pub fn update(&mut self) {
+    // FIXME: such a mess
+    pub fn update(&mut self, display: &Display<WindowSurface>) {
         if self.rotating_right {
             self.camera_t += PI / 256.0;
         }
@@ -115,6 +123,7 @@ impl State {
             self.camera_t -= PI / 256.0;
         }
 
+        // stop recording on full rotation
         if self.is_recording() && self.camera_t >= self.recording_since + (2.0 * PI) {
             self.recording_since = -1.0;
         }
@@ -167,6 +176,19 @@ impl State {
 
         if self.moving_backward {
             self.radius += 0.01;
+        }
+
+        // FIXME: strangeness going on with recording being lighter after first frame
+        if self.is_recording() {
+            let mut image: glium::texture::RawImage2d<'_, u8> =
+                display.read_front_buffer().unwrap();
+            let frame = gif::Frame::from_rgba_speed(
+                image.width.try_into().unwrap(),
+                image.height.try_into().unwrap(),
+                image.data.to_mut(),
+                30,
+            );
+            self.encoder.write_frame(&frame).unwrap();
         }
     }
 

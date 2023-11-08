@@ -1,9 +1,8 @@
 #![warn(clippy::pedantic)]
-use std::{fs::File, io::Cursor};
+use std::io::Cursor;
 
 use conversion::CartesianCoords;
 use frame::ShaderBuffer;
-use gif::{Encoder, Repeat};
 use glium::{Surface, VertexBuffer};
 
 use load::ObjVertex;
@@ -35,12 +34,6 @@ fn main() {
     let texture =
         glium::texture::RawImage2d::from_raw_rgba_reversed(&texture.into_raw(), image_dimensions);
     let diffuse_texture = glium::texture::SrgbTexture2d::new(&display, texture).unwrap();
-
-    // output gif, used when recording in camera
-    // TODO: move to camera
-    let mut image = File::create("target/output.gif").unwrap();
-    let mut encoder = Encoder::new(&mut image, 800, 480, &[]).unwrap();
-    encoder.set_repeat(Repeat::Infinite).unwrap();
 
     let vertex_graph = graph::VertexDag::from(&data);
 
@@ -89,21 +82,8 @@ fn main() {
                             &ShaderBuffer::new(&vertex_buffer, &default_shader),
                         ];
 
-                        app.draw_frame(&mut target, shader_buffers);
+                        app.draw_frame(&mut target, shader_buffers, &display);
                         target.finish().unwrap();
-
-                        // TODO: move to `camera::update`
-                        if app.camera.is_recording() {
-                            let mut image: glium::texture::RawImage2d<'_, u8> =
-                                display.read_front_buffer().unwrap();
-                            let frame = gif::Frame::from_rgba_speed(
-                                image.width.try_into().unwrap(),
-                                image.height.try_into().unwrap(),
-                                image.data.to_mut(),
-                                30,
-                            );
-                            encoder.write_frame(&frame).unwrap();
-                        }
                     }
                     // resize the display when the window's size has changed
                     winit::event::WindowEvent::Resized(window_size) => {

@@ -1,4 +1,5 @@
-use glium::{uniform, DrawParameters, Frame, PolygonMode, Program, Surface, VertexBuffer};
+use glium::{uniform, Display, DrawParameters, Frame, PolygonMode, Program, Surface, VertexBuffer};
+use glutin::surface::WindowSurface;
 
 use crate::{camera::State, load::ObjVertex};
 
@@ -34,8 +35,13 @@ impl Application {
         }
     }
 
-    pub fn draw_frame(&mut self, target: &mut Frame, shader_buffers: &[&ShaderBuffer]) {
-        self.camera.update();
+    pub fn draw_frame(
+        &mut self,
+        target: &mut Frame,
+        shader_buffers: &[&ShaderBuffer],
+        display: &Display<WindowSurface>,
+    ) {
+        self.camera.update(display);
         let uniforms = uniform! {
             persp_matrix: self.camera.get_perspective(),
             view_matrix: self.camera.get_view(),
