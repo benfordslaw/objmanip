@@ -1,9 +1,6 @@
 use glium::{uniform, DrawParameters, Frame, Program, Surface, VertexBuffer};
 
-use crate::{
-    camera::{self, CameraState},
-    load::ObjVertex,
-};
+use crate::{camera::CameraState, load::ObjVertex};
 
 pub struct Application {
     index_buffer: glium::IndexBuffer<u16>,
@@ -47,9 +44,9 @@ impl Application {
         for shader_buffer in shader_buffers {
             target
                 .draw(
-                    &shader_buffer.buffer,
+                    shader_buffer.buffer,
                     &self.index_buffer,
-                    &shader_buffer.shader,
+                    shader_buffer.shader,
                     &uniforms,
                     &self.params,
                 )
@@ -59,14 +56,14 @@ impl Application {
 }
 
 /// Simple struct to link buffers to shaders in order to easily pass pairs into `draw_frame`
-pub struct ShaderBuffer {
-    buffer: VertexBuffer<ObjVertex>,
-    shader: Program,
+pub struct ShaderBuffer<'a> {
+    buffer: &'a VertexBuffer<ObjVertex>,
+    shader: &'a Program,
 }
 
-impl ShaderBuffer {
-    pub fn new(b: VertexBuffer<ObjVertex>, p: Program) -> Self {
-        Self {
+impl<'a> ShaderBuffer<'_> {
+    pub fn new(b: &'a VertexBuffer<ObjVertex>, p: &'a Program) -> ShaderBuffer<'a> {
+        ShaderBuffer {
             buffer: b,
             shader: p,
         }

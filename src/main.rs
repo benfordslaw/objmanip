@@ -35,13 +35,9 @@ fn main() {
     encoder.set_repeat(Repeat::Infinite).unwrap();
 
     let vertex_graph = load::load_wavefront(&data);
-    let continuous_buffer = vertex_graph.continuous_path_from(1u32, &display).unwrap();
+    let connected_subgraphs_vec = vertex_graph.connected_subgraphs(&display);
+    let mut connected_subgraphs = connected_subgraphs_vec.iter().cycle();
     let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
-
-    let shader_buffers = &[
-        &ShaderBuffer::new(continuous_buffer, shader::red_shader(&display)),
-        &ShaderBuffer::new(vertex_buffer, shader::default_program(&display)),
-    ];
 
     // stores the faces of `vertex_buffer`
     let indices = glium::IndexBuffer::new(
@@ -52,6 +48,8 @@ fn main() {
     .unwrap();
 
     let mut app = frame::Application::new(indices, diffuse_texture);
+    let red_shader = shader::red_shader(&display);
+    let default_shader = shader::default_program(&display);
 
     // rendering loop
     event_loop
@@ -64,6 +62,12 @@ fn main() {
                     winit::event::WindowEvent::RedrawRequested => {
                         let mut target = display.draw();
                         target.clear_color_and_depth((0.2, 0.2, 1.0, 1.0), 1.0);
+
+                        let shader_buffers = &[
+                            &ShaderBuffer::new(connected_subgraphs.next().unwrap(), &red_shader),
+                            &ShaderBuffer::new(&vertex_buffer, &default_shader),
+                        ];
+
                         app.draw_frame(&mut target, shader_buffers);
                         target.finish().unwrap();
 

@@ -1046,7 +1046,6 @@ name = "objmanip"
 version = "0.1.0"
 dependencies = [
  "gif",
- "gl_generator",
  "glium",
  "glutin",
  "image",

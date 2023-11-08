@@ -101,4 +101,17 @@ impl VertexGraph {
 
         VertexBuffer::new(display, &path_vertices)
     }
+
+    pub fn connected_subgraphs(
+        &self,
+        display: &Display<WindowSurface>,
+    ) -> Vec<VertexBuffer<ObjVertex>> {
+        self.components
+            .iter()
+            .map(|x| {
+                self.continuous_path_from(x.index() as u32, display)
+                    .unwrap()
+            })
+            .collect()
+    }
 }
