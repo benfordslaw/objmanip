@@ -1,6 +1,6 @@
 use glium::{uniform, DrawParameters, Frame, PolygonMode, Program, Surface, VertexBuffer};
 
-use crate::{camera::CameraState, load::ObjVertex};
+use crate::{camera::State, load::ObjVertex};
 
 // TODO: docs
 pub struct Application {
@@ -8,7 +8,7 @@ pub struct Application {
     params: DrawParameters<'static>,
     light: [f32; 3],
     diffuse_texture: glium::texture::SrgbTexture2d,
-    pub camera: CameraState,
+    pub camera: State,
 }
 
 impl Application {
@@ -30,7 +30,7 @@ impl Application {
             },
             light: [1.4, 0.4, -0.7f32],
             diffuse_texture: d_texture,
-            camera: CameraState::new(),
+            camera: State::new(),
         }
     }
 

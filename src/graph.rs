@@ -1,10 +1,11 @@
 use glium::{vertex::BufferCreationError, Display, VertexBuffer};
 use glutin::surface::WindowSurface;
+use obj::ObjData;
 use petgraph::{
     algo::{self, has_path_connecting},
-    graph,
+    graph::{self, NodeIndex},
     visit::Dfs,
-    Graph, Undirected,
+    Directed, Graph, Undirected,
 };
 use rustc_hash::FxHashSet;
 
@@ -14,12 +15,12 @@ use crate::{
 };
 
 /// Directed graph
-pub struct VertexGraph {
+pub struct VertexDag {
     graph: Graph<ObjVertex, f32>,
     components: FxHashSet<graph::NodeIndex>,
 }
 
-impl VertexGraph {
+impl VertexDag {
     pub fn new(g: Graph<ObjVertex, f32>) -> Self {
         Self {
             graph: g,
@@ -37,7 +38,7 @@ impl VertexGraph {
             &self
                 .graph
                 .node_weights()
-                .cloned()
+                .copied()
                 .collect::<Vec<ObjVertex>>(),
         )
     }
@@ -137,7 +138,7 @@ impl VertexGraph {
             .find(|(_, &predecessor)| predecessor == Some(prev))
         {
             path_vertices.push(prev);
-            prev = graph::NodeIndex::from(idx as u32);
+            prev = graph::NodeIndex::from(u32::try_from(idx).unwrap());
         }
 
         path_vertices
@@ -147,7 +148,11 @@ impl VertexGraph {
     pub fn connected_subgraph_polar_offs(&self) -> Vec<Vec<String>> {
         self.components
             .iter()
-            .map(|idx| self.path_to_polar_offs(&self.continuous_path_from(idx.index() as u32)))
+            .map(|idx| {
+                self.path_to_polar_offs(
+                    &self.continuous_path_from(u32::try_from(idx.index()).unwrap()),
+                )
+            })
             .collect()
     }
 
@@ -159,9 +164,75 @@ impl VertexGraph {
         self.components
             .iter()
             .map(|idx| {
-                self.path_to_buffer(&self.continuous_path_from(idx.index() as u32), display)
-                    .unwrap()
+                self.path_to_buffer(
+                    &self.continuous_path_from(u32::try_from(idx.index()).unwrap()),
+                    display,
+                )
+                .unwrap()
             })
             .collect()
+    }
+}
+
+/// Returns an undirected graph where the nodes are `ObjVertex` and connected if they are
+/// connected in the obj file.
+impl From<&ObjData> for VertexDag {
+    fn from(data: &ObjData) -> Self {
+        glium::implement_vertex!(ObjVertex, position, normal, texture);
+
+        let mut vertex_graph: Graph<ObjVertex, f32, Directed> = graph::Graph::new();
+        let mut un_vertex_graph: Graph<ObjVertex, f32, Undirected> = graph::Graph::new_undirected();
+        let mut seen_vertices = FxHashSet::<usize>::default();
+
+        // initialize empty nodes
+        for _ in 0..data.position.len() {
+            vertex_graph.add_node(ObjVertex::default());
+            un_vertex_graph.add_node(ObjVertex::default());
+        }
+
+        for obj::SimplePolygon(indices) in data
+            .objects
+            .iter()
+            .flat_map(|object| object.groups.iter().flat_map(|g| g.polys.iter()))
+        {
+            // add unseen positions as new nodes in vertex_graph
+            for v in indices.iter().filter(|v| seen_vertices.insert(v.0)) {
+                let position = data.position[v.0];
+
+                let texture = v.1.map(|index| data.texture[index]);
+                let texture = texture.unwrap_or([0.0; 2]);
+
+                // TODO: need some way of determining which format the `obj` is using to specify
+                // normals
+                //
+                // this is used when the normals are specified by the faces in the obj
+                let normal = v.2.map(|index| data.normal[index]);
+                let _normal = normal.unwrap_or([0.0; 3]);
+
+                // this is used when the normals are specified by `vn` in the obj
+                let normal = data.normal[v.0];
+
+                *vertex_graph
+                    .node_weight_mut(NodeIndex::from(u32::try_from(v.0).unwrap()))
+                    .unwrap() = ObjVertex {
+                    position,
+                    normal,
+                    texture,
+                };
+            }
+
+            // add all edges between vertices in the triangle
+            // (1, 2, 3) + (2, 3, 1) -> (1, 2), (2, 3), (3, 1)
+            for (v1, v2) in indices.iter().zip(indices.iter().cycle().skip(1)) {
+                // parent node should have more incoming edges than child
+                let parent_node = NodeIndex::from(u32::try_from(v1.0).unwrap());
+                let child_node = NodeIndex::from(u32::try_from(v2.0).unwrap());
+                un_vertex_graph.update_edge(parent_node, child_node, 0.0);
+            }
+        }
+
+        let mut vertex_graph = VertexDag::new(vertex_graph);
+        vertex_graph.add_dag_edges(&un_vertex_graph);
+        vertex_graph
     }
 }

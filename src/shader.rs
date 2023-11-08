@@ -2,7 +2,7 @@ use glium::{program, Display, Program};
 use glutin::surface::WindowSurface;
 
 // TODO: break up fns for vertex, fragment shaders
-pub fn red_shader(display: &Display<WindowSurface>) -> Program {
+pub fn red(display: &Display<WindowSurface>) -> Program {
     program! (display,
         140 => { vertex: "
                     #version 140
@@ -56,7 +56,7 @@ pub fn red_shader(display: &Display<WindowSurface>) -> Program {
     }).unwrap()
 }
 
-pub fn default_program(display: &Display<WindowSurface>) -> Program {
+pub fn full(display: &Display<WindowSurface>) -> Program {
     program! (display,
         140 => { vertex: "
                     #version 140

@@ -1,3 +1,4 @@
+#![warn(clippy::pedantic)]
 use std::{fs::File, io::Cursor};
 
 use conversion::CartesianCoords;
@@ -41,7 +42,7 @@ fn main() {
     let mut encoder = Encoder::new(&mut image, 800, 480, &[]).unwrap();
     encoder.set_repeat(Repeat::Infinite).unwrap();
 
-    let vertex_graph = load::load_wavefront(&data);
+    let vertex_graph = graph::VertexDag::from(&data);
 
     let mut chain: Chain<String> = Chain::new();
     for polar_off in vertex_graph.connected_subgraph_polar_offs() {
@@ -68,8 +69,8 @@ fn main() {
     .unwrap();
 
     let mut app = frame::Application::new(indices, diffuse_texture);
-    let red_shader = shader::red_shader(&display);
-    let default_shader = shader::default_program(&display);
+    let red_shader = shader::red(&display);
+    let default_shader = shader::full(&display);
 
     // rendering loop
     event_loop
@@ -106,12 +107,12 @@ fn main() {
                     }
                     // resize the display when the window's size has changed
                     winit::event::WindowEvent::Resized(window_size) => {
-                        display.resize(window_size.into())
+                        display.resize(window_size.into());
                     }
                     // all keyboard inputs are associated to camera movements at this point, so
                     // just passes the keyboard input to camera
                     winit::event::WindowEvent::KeyboardInput { event, .. } => {
-                        app.camera.process_input(&event)
+                        app.camera.process_input(&event);
                     }
                     _ => (),
                 },

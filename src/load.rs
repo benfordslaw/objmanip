@@ -1,12 +1,4 @@
-#![allow(dead_code)]
-
-use petgraph::{
-    graph::{self, NodeIndex},
-    Directed, Graph, Undirected,
-};
-use rustc_hash::FxHashSet;
-
-use crate::{conversion::CartesianCoords, graph::VertexGraph};
+use crate::conversion::CartesianCoords;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ObjVertex {
@@ -33,74 +25,13 @@ pub fn get_indices(data: &obj::ObjData) -> Vec<u16> {
     data.objects
         .iter()
         .flat_map(move |object| object.groups.iter().flat_map(|g| g.polys.iter()))
-        .flat_map(|obj::SimplePolygon(indices)| indices.iter().map(|x| x.0 as u16))
-        .skip(6)
+        .flat_map(|obj::SimplePolygon(indices)| indices.iter().map(|x| u16::try_from(x.0).unwrap()))
+        .skip(6) // investigate this skipping (mattered for teapot)
         .collect()
 }
 
-/// Parse the byte stream from the obj file to an ObjData result
+/// Parse the byte stream from the obj file to an `ObjData` result
 pub fn get_objdata(data: &[u8]) -> Result<obj::ObjData, obj::ObjError> {
     let mut data = ::std::io::BufReader::new(data);
     obj::ObjData::load_buf(&mut data)
-}
-
-/// Returns an undirected graph where the nodes are `ObjVertex` and connected if they are
-/// connected in the obj file.
-pub fn load_wavefront(data: &obj::ObjData) -> VertexGraph {
-    glium::implement_vertex!(ObjVertex, position, normal, texture);
-
-    let mut vertex_graph: Graph<ObjVertex, f32, Directed> = graph::Graph::new();
-    let mut un_vertex_graph: Graph<ObjVertex, f32, Undirected> = graph::Graph::new_undirected();
-    let mut seen_vertices = FxHashSet::<usize>::default();
-
-    // initialize empty nodes
-    for _ in 0..data.position.len() {
-        vertex_graph.add_node(ObjVertex::default());
-        un_vertex_graph.add_node(ObjVertex::default());
-    }
-
-    for obj::SimplePolygon(indices) in data
-        .objects
-        .iter()
-        .flat_map(|object| object.groups.iter().flat_map(|g| g.polys.iter()))
-    {
-        // add unseen positions as new nodes in vertex_graph
-        for v in indices.iter().filter(|v| seen_vertices.insert(v.0)) {
-            let position = data.position[v.0];
-
-            let texture = v.1.map(|index| data.texture[index]);
-            let texture = texture.unwrap_or([0.0; 2]);
-
-            // TODO: need some way of determining which format the `obj` is using to specify
-            // normals
-            //
-            // this is used when the normals are specified by the faces in the obj
-            let normal = v.2.map(|index| data.normal[index]);
-            let _normal = normal.unwrap_or([0.0; 3]);
-
-            // this is used when the normals are specified by `vn` in the obj
-            let normal = data.normal[v.0];
-
-            *vertex_graph
-                .node_weight_mut(NodeIndex::from(v.0 as u32))
-                .unwrap() = ObjVertex {
-                position,
-                normal,
-                texture,
-            };
-        }
-
-        // add all edges between vertices in the triangle
-        // (1, 2, 3) + (2, 3, 1) -> (1, 2), (2, 3), (3, 1)
-        for (v1, v2) in indices.iter().zip(indices.iter().cycle().skip(1)) {
-            // parent node should have more incoming edges than child
-            let parent_node = NodeIndex::from(v1.0 as u32);
-            let child_node = NodeIndex::from(v2.0 as u32);
-            un_vertex_graph.update_edge(parent_node, child_node, 0.0);
-        }
-    }
-
-    let mut vertex_graph = VertexGraph::new(vertex_graph);
-    vertex_graph.add_dag_edges(&un_vertex_graph);
-    vertex_graph
 }

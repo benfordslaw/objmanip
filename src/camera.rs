@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-pub struct CameraState {
+pub struct State {
     aspect_ratio: f32,
     position: (f32, f32, f32),
     direction: (f32, f32, f32),
@@ -16,15 +16,17 @@ pub struct CameraState {
     moving_backward: bool,
 }
 
-impl CameraState {
-    pub fn new() -> CameraState {
-        CameraState {
+impl State {
+    pub fn new() -> Self {
+        Self {
             aspect_ratio: 1024.0 / 768.0,
             position: (0.1, -0.1, 1.0),
             direction: (0.0, 0.0, -1.0),
             camera_t: PI / 2.0,
             radius: 1.0,
             recording_since: -1.0,
+
+            // TODO: restructure these to avoid so many bools
             rotating_right: false,
             rotating_left: false,
             moving_up: false,
@@ -34,8 +36,9 @@ impl CameraState {
         }
     }
 
+    /// checks with some margin of error
     pub fn is_recording(&self) -> bool {
-        self.recording_since != -1.0
+        (self.recording_since + 1.0).abs() > 0.001
     }
 
     pub fn set_position(&mut self, pos: (f32, f32, f32)) {
