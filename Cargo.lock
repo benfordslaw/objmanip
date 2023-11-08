@@ -759,6 +759,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -897,7 +906,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc6ad68e26d51a9558f65e93b9795c9422630d0932717a3235668bb9ab71e3fd"
 dependencies = [
  "getopts",
- "itertools",
+ "itertools 0.9.0",
  "petgraph 0.5.1",
  "rand 0.7.3",
  "serde",
@@ -1121,6 +1130,7 @@ dependencies = [
  "glium",
  "glutin",
  "image",
+ "itertools 0.11.0",
  "markov",
  "obj",
  "petgraph 0.6.4",

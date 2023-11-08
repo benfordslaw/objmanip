@@ -1,6 +1,7 @@
 #![warn(clippy::pedantic)]
 use std::io::Cursor;
 
+use buffer::DisplayVertexBuffer;
 use conversion::CartesianCoords;
 use frame::ShaderBuffer;
 use glium::{IndexBuffer, Surface, VertexBuffer};
@@ -10,6 +11,7 @@ use markov::{self, Chain};
 
 use crate::conversion::PolarCoords;
 
+mod buffer;
 mod camera;
 mod conversion;
 mod frame;
@@ -22,7 +24,7 @@ fn main() {
     let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
     // load assets
-    let data = load::get_objdata(include_bytes!("../assets/teapot.obj")).unwrap();
+    let data = load::get_objdata(include_bytes!("../assets/spot_triangulated.obj")).unwrap();
     // TODO: move texture loading somewhere else
     let texture = image::load(
         Cursor::new(&include_bytes!("../assets/Epona_grp.png")),
@@ -68,6 +70,7 @@ fn main() {
                         let mut target = display.draw();
                         target.clear_color_and_depth((0.2, 0.2, 1.0, 1.0), 1.0);
 
+                        // generate a new path and create a buffer
                         let gen_polar: Vec<PolarCoords> =
                             chain.generate().iter().map(PolarCoords::from).collect();
                         let mut run_pos = CartesianCoords::default();
@@ -77,18 +80,9 @@ fn main() {
                             new_vertices.push(run_pos.clone().into());
                         }
                         let generated_buffer = VertexBuffer::new(&display, &new_vertices).unwrap();
-                        let index_vec: Vec<u32> =
-                            (0u32..u32::try_from(new_vertices.len()).unwrap().saturating_sub(2))
-                                .map(|idx| [idx, idx + 1, idx + 2])
-                                .flatten()
-                                .collect();
-                        let generated_indices = glium::IndexBuffer::new(
-                            &display,
-                            glium::index::PrimitiveType::TrianglesList,
-                            &index_vec,
-                        )
-                        .unwrap();
-                        // TODO: create new index_buffer
+                        let generated_indices =
+                            IndexBuffer::try_from(DisplayVertexBuffer(&generated_buffer, &display))
+                                .unwrap();
 
                         let shader_buffers = &[
                             &ShaderBuffer::new(&generated_buffer, &generated_indices, &red_shader),

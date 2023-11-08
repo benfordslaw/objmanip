@@ -207,10 +207,10 @@ impl From<&ObjData> for VertexDag {
                 //
                 // this is used when the normals are specified by the faces in the obj
                 let normal = v.2.map(|index| data.normal[index]);
-                let _normal = normal.unwrap_or([0.0; 3]);
+                let normal = normal.unwrap_or([0.0; 3]);
 
                 // this is used when the normals are specified by `vn` in the obj
-                let normal = data.normal[v.0];
+                // let normal = data.normal[v.0];
 
                 *vertex_graph
                     .node_weight_mut(NodeIndex::from(u32::try_from(v.0).unwrap()))

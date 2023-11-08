@@ -51,11 +51,31 @@ impl From<&String> for PolarCoords {
 impl ToString for PolarCoords {
     fn to_string(&self) -> String {
         [
-            self.r.to_string(),
-            self.long.to_string(),
-            self.lat.to_string(),
+            format!("{:.4}", self.r),
+            format!("{:.4}", self.long),
+            format!("{:.4}", self.lat),
         ]
         .join(" ")
+    }
+}
+
+pub struct PolarCoordSeq {
+    seq: Vec<PolarCoords>,
+}
+
+impl ToString for PolarCoordSeq {
+    fn to_string(&self) -> String {
+        self.seq
+            .iter()
+            .flat_map(|coords| {
+                [
+                    format!("{:.10}", coords.r),
+                    format!("{:.10}", coords.long),
+                    format!("{:.10}", coords.lat),
+                ]
+            })
+            .collect::<Vec<String>>()
+            .join(" ")
     }
 }
 
