@@ -1,12 +1,16 @@
-use glium::{uniform, DrawParameters, Frame, Program, Surface};
+use glium::{uniform, DrawParameters, Frame, Program, Surface, VertexBuffer};
 
-use crate::{camera, load::ObjVertex};
+use crate::{
+    camera::{self, CameraState},
+    load::ObjVertex,
+};
 
 pub struct Application {
     index_buffer: glium::IndexBuffer<u16>,
     params: DrawParameters<'static>,
     light: [f32; 3],
     diffuse_texture: glium::texture::SrgbTexture2d,
+    pub camera: CameraState,
 }
 
 impl Application {
@@ -27,30 +31,44 @@ impl Application {
             },
             light: [1.4, 0.4, -0.7f32],
             diffuse_texture: d_texture,
+            camera: CameraState::new(),
         }
     }
 
-    pub fn draw_frame(
-        &self,
-        camera: &mut camera::CameraState,
-        target: &mut Frame,
-        program: &Program,
-        vertex_buffer: &glium::VertexBuffer<ObjVertex>,
-    ) -> Result<(), glium::DrawError> {
-        // must be re-calculated each redraw due to camera movement
+    pub fn draw_frame(&mut self, target: &mut Frame, shader_buffers: &[&ShaderBuffer]) {
+        self.camera.update();
         let uniforms = uniform! {
-            persp_matrix: camera.get_perspective(),
-            view_matrix: camera.get_view(),
+            persp_matrix: self.camera.get_perspective(),
+            view_matrix: self.camera.get_view(),
             u_light: self.light,
             diffuse_tex: &self.diffuse_texture,
         };
 
-        target.draw(
-            vertex_buffer,
-            &self.index_buffer,
-            program,
-            &uniforms,
-            &self.params,
-        )
+        for shader_buffer in shader_buffers {
+            target
+                .draw(
+                    &shader_buffer.buffer,
+                    &self.index_buffer,
+                    &shader_buffer.shader,
+                    &uniforms,
+                    &self.params,
+                )
+                .unwrap();
+        }
+    }
+}
+
+/// Simple struct to link buffers to shaders in order to easily pass pairs into `draw_frame`
+pub struct ShaderBuffer {
+    buffer: VertexBuffer<ObjVertex>,
+    shader: Program,
+}
+
+impl ShaderBuffer {
+    pub fn new(b: VertexBuffer<ObjVertex>, p: Program) -> Self {
+        Self {
+            buffer: b,
+            shader: p,
+        }
     }
 }

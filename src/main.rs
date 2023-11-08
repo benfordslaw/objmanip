@@ -1,5 +1,6 @@
 use std::{fs::File, io::Cursor};
 
+use frame::ShaderBuffer;
 use gif::{Encoder, Repeat};
 use glium::Surface;
 
@@ -10,9 +11,7 @@ mod load;
 mod shader;
 
 fn main() {
-    let event_loop = winit::event_loop::EventLoopBuilder::new()
-        .build()
-        .expect("xx");
+    let event_loop = winit::event_loop::EventLoopBuilder::new().build().unwrap();
     let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
     // load assets
@@ -39,6 +38,11 @@ fn main() {
     let continuous_buffer = vertex_graph.continuous_path_from(1u32, &display).unwrap();
     let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
 
+    let shader_buffers = &[
+        &ShaderBuffer::new(continuous_buffer, shader::red_shader(&display)),
+        &ShaderBuffer::new(vertex_buffer, shader::default_program(&display)),
+    ];
+
     // stores the faces of `vertex_buffer`
     let indices = glium::IndexBuffer::new(
         &display,
@@ -47,9 +51,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut camera = camera::CameraState::new();
-    // TODO: this struct makes little sense
-    let app = frame::Application::new(indices, diffuse_texture);
+    let mut app = frame::Application::new(indices, diffuse_texture);
 
     // rendering loop
     event_loop
@@ -61,28 +63,12 @@ fn main() {
                     // render everything
                     winit::event::WindowEvent::RedrawRequested => {
                         let mut target = display.draw();
-                        camera.update();
                         target.clear_color_and_depth((0.2, 0.2, 1.0, 1.0), 1.0);
-                        // TODO: maybe the vertex_buffer input should be a vec to allow
-                        // rendering of multiple vertex buffers on the same frame
-                        app.draw_frame(
-                            &mut camera,
-                            &mut target,
-                            &shader::red_shader(&display),
-                            &continuous_buffer,
-                        )
-                        .unwrap();
-                        app.draw_frame(
-                            &mut camera,
-                            &mut target,
-                            &shader::default_program(&display),
-                            &vertex_buffer,
-                        )
-                        .unwrap();
+                        app.draw_frame(&mut target, shader_buffers);
                         target.finish().unwrap();
 
-                        // TODO: move to camera
-                        if camera.is_recording() {
+                        // TODO: move to `camera::update`
+                        if app.camera.is_recording() {
                             let mut image: glium::texture::RawImage2d<'_, u8> =
                                 display.read_front_buffer().unwrap();
                             let frame = gif::Frame::from_rgba_speed(
@@ -99,9 +85,9 @@ fn main() {
                         display.resize(window_size.into())
                     }
                     // all keyboard inputs are associated to camera movements at this point, so
-                    // just pass the keyboard input to camera
+                    // just passes the keyboard input to camera
                     winit::event::WindowEvent::KeyboardInput { event, .. } => {
-                        camera.process_input(&event)
+                        app.camera.process_input(&event)
                     }
                     _ => (),
                 },

@@ -10,12 +10,12 @@ use rustc_hash::FxHashSet;
 
 use crate::load::ObjVertex;
 
+/// Directed graph
 pub struct VertexGraph {
     graph: Graph<ObjVertex, f32>,
     components: FxHashSet<graph::NodeIndex>,
 }
 
-/// Directed graph
 impl VertexGraph {
     pub fn new(g: Graph<ObjVertex, f32>) -> Self {
         Self {
