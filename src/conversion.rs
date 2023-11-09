@@ -1,4 +1,4 @@
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct PolarCoords {
     r: f32,
     long: f32,
@@ -51,29 +51,47 @@ impl From<&String> for PolarCoords {
 impl ToString for PolarCoords {
     fn to_string(&self) -> String {
         [
-            format!("{:.4}", self.r),
-            format!("{:.4}", self.long),
-            format!("{:.4}", self.lat),
+            format!("{:.14}", self.r),
+            format!("{:.14}", self.long),
+            format!("{:.14}", self.lat),
         ]
         .join(" ")
     }
 }
 
+#[derive(Debug)]
 pub struct PolarCoordSeq {
-    seq: Vec<PolarCoords>,
+    pub seq: Vec<PolarCoords>,
+}
+
+impl FromIterator<PolarCoords> for PolarCoordSeq {
+    fn from_iter<T: IntoIterator<Item = PolarCoords>>(iter: T) -> Self {
+        Self {
+            seq: iter.into_iter().collect::<Vec<PolarCoords>>(),
+        }
+    }
+}
+
+impl From<&String> for PolarCoordSeq {
+    fn from(str: &String) -> Self {
+        let mut self_vec = Vec::<PolarCoords>::new();
+        for chunk in str.split(' ').collect::<Vec<&str>>().chunks(3) {
+            let mut split_string = chunk.iter();
+            self_vec.push(PolarCoords {
+                r: split_string.next().unwrap().parse::<f32>().unwrap(),
+                long: split_string.next().unwrap().parse::<f32>().unwrap(),
+                lat: split_string.next().unwrap().parse::<f32>().unwrap(),
+            });
+        }
+        Self { seq: self_vec }
+    }
 }
 
 impl ToString for PolarCoordSeq {
     fn to_string(&self) -> String {
         self.seq
             .iter()
-            .flat_map(|coords| {
-                [
-                    format!("{:.10}", coords.r),
-                    format!("{:.10}", coords.long),
-                    format!("{:.10}", coords.lat),
-                ]
-            })
+            .map(std::string::ToString::to_string)
             .collect::<Vec<String>>()
             .join(" ")
     }

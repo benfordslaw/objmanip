@@ -26,7 +26,6 @@ pub fn get_indices(data: &obj::ObjData) -> Vec<u32> {
         .iter()
         .flat_map(move |object| object.groups.iter().flat_map(|g| g.polys.iter()))
         .flat_map(|obj::SimplePolygon(indices)| indices.iter().map(|x| u32::try_from(x.0).unwrap()))
-        .skip(6) // investigate this skipping (mattered for teapot)
         .collect()
 }
 

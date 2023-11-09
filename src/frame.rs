@@ -1,4 +1,4 @@
-use glium::{uniform, Display, DrawParameters, Frame, PolygonMode, Program, Surface, VertexBuffer};
+use glium::{uniform, Display, DrawParameters, Frame, Program, Surface, VertexBuffer};
 use glutin::surface::WindowSurface;
 
 use crate::{camera::State, load::ObjVertex};
@@ -21,7 +21,6 @@ impl Application {
                     ..Default::default()
                 },
                 blend: glium::Blend::alpha_blending(),
-                polygon_mode: PolygonMode::Line,
                 ..Default::default()
             },
             light: [1.4, 0.4, -0.7f32],

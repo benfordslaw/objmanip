@@ -4,7 +4,7 @@ use obj::ObjData;
 use petgraph::{
     algo::{self, has_path_connecting},
     graph::{self, NodeIndex},
-    visit::Dfs,
+    visit::{Bfs, Walker},
     Directed, Graph, Undirected,
 };
 use rustc_hash::FxHashSet;
@@ -54,24 +54,29 @@ impl VertexDag {
             if seen_vertices.contains(&start) {
                 continue;
             }
+
             start_vertices.insert(start);
-            let mut dfs = Dfs::new(&self.graph, start);
+            // implement Bfs
+            let bfs = Bfs::new(undirected, start);
+            let mut walker = bfs.iter(undirected);
+
             let mut prv = start;
-            while let Some(visited) = dfs.next(undirected) {
-                if !has_path_connecting(&self.graph, visited, prv, None)
-                    && undirected.contains_edge(prv, visited)
-                {
-                    seen_vertices.insert(visited);
-                    self.graph.update_edge(prv, visited, -1.0);
-                }
-                prv = visited;
+
+            // find position of earliest node in Bfs that is connected to prv, add edge
+            while let Some(next) = walker.find(|&node| {
+                undirected.contains_edge(prv, node)
+                    && !has_path_connecting(&self.graph, node, prv, None)
+            }) {
+                seen_vertices.insert(next);
+                self.graph.update_edge(prv, next, -1.0);
+                prv = next;
             }
         }
 
         self.components = start_vertices;
     }
 
-    /// get the 3D position of the `ObjVertex` at `idx` in this graph
+    /// get the cartesian position of the `ObjVertex` at `idx` in this graph
     fn position_at(&self, idx: graph::NodeIndex) -> [f32; 3] {
         self.graph.node_weight(idx).unwrap().position
     }
@@ -84,8 +89,9 @@ impl VertexDag {
             .iter()
             .next()
             .map(|idx| CartesianCoords::from(self.position_at(*idx)))
-            .unwrap();
+            .unwrap_or_default();
         for next in path.iter().map(|idx| self.position_at(*idx)) {
+            // the 3d offset from the previous node to this node
             let mut coords = CartesianCoords::from(next);
             coords.subtract_with(&prv);
 
@@ -199,9 +205,6 @@ impl From<&ObjData> for VertexDag {
             for v in indices.iter().filter(|v| seen_vertices.insert(v.0)) {
                 let position = data.position[v.0];
 
-                let texture = v.1.map(|index| data.texture[index]);
-                let texture = texture.unwrap_or([0.0; 2]);
-
                 // TODO: need some way of determining which format the `obj` is using to specify
                 // normals
                 //
@@ -217,7 +220,7 @@ impl From<&ObjData> for VertexDag {
                     .unwrap() = ObjVertex {
                     position,
                     normal,
-                    texture,
+                    texture: [0.0; 2], // because we don't do anything meaningful yet here
                 };
             }
 

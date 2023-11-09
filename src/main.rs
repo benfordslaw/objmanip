@@ -24,7 +24,7 @@ fn main() {
     let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
     // load assets
-    let data = load::get_objdata(include_bytes!("../assets/spot_triangulated.obj")).unwrap();
+    let data = load::get_objdata(include_bytes!("../assets/r1.obj")).unwrap();
     // TODO: move texture loading somewhere else
     let texture = image::load(
         Cursor::new(&include_bytes!("../assets/Epona_grp.png")),
@@ -32,6 +32,7 @@ fn main() {
     )
     .unwrap()
     .to_rgba8();
+
     let image_dimensions = texture.dimensions();
     let texture =
         glium::texture::RawImage2d::from_raw_rgba_reversed(&texture.into_raw(), image_dimensions);
@@ -39,7 +40,7 @@ fn main() {
 
     let vertex_graph = graph::VertexDag::from(&data);
 
-    let mut chain: Chain<String> = Chain::new();
+    let mut chain: Chain<String> = Chain::of_order(10);
     for polar_off in vertex_graph.connected_subgraph_polar_offs() {
         chain.feed(polar_off);
     }
@@ -75,10 +76,12 @@ fn main() {
                             chain.generate().iter().map(PolarCoords::from).collect();
                         let mut run_pos = CartesianCoords::default();
                         let mut new_vertices = Vec::<ObjVertex>::new();
+
                         for gen_coord in &gen_polar {
                             run_pos.sum_with(&CartesianCoords::from(gen_coord));
                             new_vertices.push(run_pos.clone().into());
                         }
+
                         let generated_buffer = VertexBuffer::new(&display, &new_vertices).unwrap();
                         let generated_indices =
                             IndexBuffer::try_from(DisplayVertexBuffer(&generated_buffer, &display))
