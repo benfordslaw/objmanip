@@ -21,6 +21,7 @@ impl Application {
                     ..Default::default()
                 },
                 blend: glium::Blend::alpha_blending(),
+                polygon_mode: glium::PolygonMode::Line,
                 ..Default::default()
             },
             light: [1.4, 0.4, -0.7f32],

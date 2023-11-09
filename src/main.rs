@@ -24,7 +24,7 @@ fn main() {
     let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
     // load assets
-    let data = load::get_objdata(include_bytes!("../assets/r1.obj")).unwrap();
+    let data = load::get_objdata(include_bytes!("../assets/r3.obj")).unwrap();
     // TODO: move texture loading somewhere else
     let texture = image::load(
         Cursor::new(&include_bytes!("../assets/Epona_grp.png")),
@@ -40,10 +40,11 @@ fn main() {
 
     let vertex_graph = graph::VertexDag::from(&data);
 
-    let mut chain: Chain<String> = Chain::of_order(10);
+    let mut chain: Chain<String> = Chain::of_order(7);
     for polar_off in vertex_graph.connected_subgraph_polar_offs() {
         chain.feed(polar_off);
     }
+    let mut gens = chain.iter();
 
     let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
 
@@ -59,6 +60,9 @@ fn main() {
     let red_shader = shader::red(&display);
     let default_shader = shader::full(&display);
 
+    let subgraph_bufs = vertex_graph.connected_subgraph_buffers(&display);
+    let mut subgraph_iter = subgraph_bufs.iter().cycle();
+
     // rendering loop
     event_loop
         .run(move |event, window_target| {
@@ -73,7 +77,7 @@ fn main() {
 
                         // generate a new path and create a buffer
                         let gen_polar: Vec<PolarCoords> =
-                            chain.generate().iter().map(PolarCoords::from).collect();
+                            gens.next().unwrap().iter().map(PolarCoords::from).collect();
                         let mut run_pos = CartesianCoords::default();
                         let mut new_vertices = Vec::<ObjVertex>::new();
 

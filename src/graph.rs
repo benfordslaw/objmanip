@@ -4,7 +4,6 @@ use obj::ObjData;
 use petgraph::{
     algo::{self, has_path_connecting},
     graph::{self, NodeIndex},
-    visit::{Bfs, Walker},
     Directed, Graph, Undirected,
 };
 use rustc_hash::FxHashSet;
@@ -55,21 +54,56 @@ impl VertexDag {
                 continue;
             }
 
-            start_vertices.insert(start);
-            // implement Bfs
-            let bfs = Bfs::new(undirected, start);
-            let mut walker = bfs.iter(undirected);
-
+            // initialize to start, updated with previous
             let mut prv = start;
 
-            // find position of earliest node in Bfs that is connected to prv, add edge
-            while let Some(next) = walker.find(|&node| {
-                undirected.contains_edge(prv, node)
-                    && !has_path_connecting(&self.graph, node, prv, None)
-            }) {
+            let mut currently_seen_vertices = FxHashSet::<graph::NodeIndex>::default();
+
+            // the next node is the neighbor of the previous node that
+            // 1. was not previously connected by an edge
+            // 2. does not have a path in this graph connecting to the previous node
+            // 3. shares the most neighbors with all previous nodes
+            //
+            // 1-2 ensure that this graph is not cyclic, 3 attempts to make this a localized
+            // region in the graph
+            while let Some(next) = undirected
+                .neighbors(prv)
+                .filter(|&node| {
+                    !currently_seen_vertices.contains(&node)
+                        && !has_path_connecting(&self.graph, node, prv, None)
+                })
+                .min_by(|&n1, &n2| {
+                    petgraph::algo::astar(
+                        &undirected,
+                        n1,
+                        |finish| finish == start,
+                        |e| *e.weight(),
+                        |_| 0.0,
+                    )
+                    .unwrap()
+                    .0
+                    .total_cmp(
+                        &petgraph::algo::astar(
+                            &undirected,
+                            n2,
+                            |finish| finish == start,
+                            |e| *e.weight(),
+                            |_| 0.0,
+                        )
+                        .unwrap()
+                        .0,
+                    )
+                })
+            {
+                self.graph.add_edge(prv, next, -1.0);
                 seen_vertices.insert(next);
-                self.graph.update_edge(prv, next, -1.0);
+                currently_seen_vertices.insert(next);
                 prv = next;
+            }
+
+            // if any edges were added as a result of this start
+            if prv != start {
+                start_vertices.insert(start);
             }
         }
 
@@ -163,6 +197,7 @@ impl VertexDag {
     }
 
     /// Return a `VertexBuffer` for each connected subgraph
+    /// TODO: should be iter out
     pub fn connected_subgraph_buffers(
         &self,
         display: &Display<WindowSurface>,
@@ -230,7 +265,7 @@ impl From<&ObjData> for VertexDag {
                 // parent node should have more incoming edges than child
                 let parent_node = NodeIndex::from(u32::try_from(v1.0).unwrap());
                 let child_node = NodeIndex::from(u32::try_from(v2.0).unwrap());
-                un_vertex_graph.update_edge(parent_node, child_node, 0.0);
+                un_vertex_graph.update_edge(parent_node, child_node, 1.0);
             }
         }
 

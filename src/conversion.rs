@@ -51,9 +51,9 @@ impl From<&String> for PolarCoords {
 impl ToString for PolarCoords {
     fn to_string(&self) -> String {
         [
-            format!("{:.14}", self.r),
-            format!("{:.14}", self.long),
-            format!("{:.14}", self.lat),
+            format!("{:.16}", self.r),
+            format!("{:.16}", self.long),
+            format!("{:.16}", self.lat),
         ]
         .join(" ")
     }
