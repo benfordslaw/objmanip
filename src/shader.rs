@@ -20,7 +20,7 @@ pub fn red(display: &Display<WindowSurface>) -> Program {
 
                     void main() {
                         v_tex_coords = texture;
-                        v_position = position * 1000;
+                        v_position = position * 5000;
                         v_normal = normal;
                         gl_Position = persp_matrix * view_matrix * vec4(v_position * 0.005, 1.0);
                     }
@@ -74,7 +74,7 @@ pub fn full(display: &Display<WindowSurface>) -> Program {
 
                     void main() {
                         v_tex_coords = texture;
-                        v_position = position * 1000;
+                        v_position = position * 5000;
                         v_normal = normal;
                         gl_Position = persp_matrix * view_matrix * vec4(v_position * 0.005, 1.0);
                     }

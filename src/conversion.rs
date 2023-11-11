@@ -11,6 +11,12 @@ impl PolarCoords {
         self.long += other.long;
         self.lat += other.lat;
     }
+
+    pub fn subtract_with(&mut self, other: &PolarCoords) {
+        self.r -= other.r;
+        self.long -= other.long;
+        self.lat -= other.lat;
+    }
 }
 
 impl From<&CartesianCoords> for PolarCoords {
@@ -24,7 +30,7 @@ impl From<&CartesianCoords> for PolarCoords {
             calc_long = 0.0;
         }
 
-        let mut calc_lat = cartesian_coords.z / calc_r;
+        let mut calc_lat = f32::acos(cartesian_coords.z / calc_r);
         if calc_lat.is_nan() {
             calc_lat = 0.0;
         }
@@ -51,9 +57,9 @@ impl From<&String> for PolarCoords {
 impl ToString for PolarCoords {
     fn to_string(&self) -> String {
         [
-            format!("{:.16}", self.r),
-            format!("{:.16}", self.long),
-            format!("{:.16}", self.lat),
+            format!("{:.10}", self.r),
+            format!("{:.10}", self.long),
+            format!("{:.10}", self.lat),
         ]
         .join(" ")
     }
@@ -123,7 +129,7 @@ impl From<&PolarCoords> for CartesianCoords {
         Self {
             x: polar_coords.r * polar_coords.long.sin() * polar_coords.lat.cos(),
             y: polar_coords.r * polar_coords.long.sin() * polar_coords.lat.sin(),
-            z: polar_coords.r * polar_coords.long.sin(),
+            z: polar_coords.r * polar_coords.long.cos(),
         }
     }
 }

@@ -1,8 +1,9 @@
 use glium::{vertex::BufferCreationError, Display, VertexBuffer};
 use glutin::surface::WindowSurface;
+use itertools::Itertools;
 use obj::ObjData;
 use petgraph::{
-    algo::{self, has_path_connecting},
+    algo::has_path_connecting,
     graph::{self, NodeIndex},
     Directed, Graph, Undirected,
 };
@@ -16,6 +17,7 @@ use crate::{
 /// Directed graph
 pub struct VertexDag {
     graph: Graph<ObjVertex, f32>,
+    undirected: Graph<ObjVertex, usize, Undirected>,
     components: FxHashSet<graph::NodeIndex>,
 }
 
@@ -23,6 +25,7 @@ impl VertexDag {
     pub fn new(g: Graph<ObjVertex, f32>) -> Self {
         Self {
             graph: g,
+            undirected: graph::UnGraph::new_undirected(),
             components: FxHashSet::default(),
         }
     }
@@ -42,71 +45,97 @@ impl VertexDag {
         )
     }
 
+    pub fn get_paths(&self) -> Vec<Vec<NodeIndex>> {
+        // sort undirected weights by y value, min by y
+
+        let sorted_indices = self
+            .graph
+            .node_indices()
+            .sorted_unstable_by(|&n1, &n2| {
+                self.graph.node_weight(n1).unwrap().position[1]
+                    .total_cmp(&self.graph.node_weight(n2).unwrap().position[1])
+            })
+            .collect::<Vec<NodeIndex>>();
+
+        let mut all_out_paths = Vec::<Vec<NodeIndex>>::new();
+        let mut seen_vertices = FxHashSet::<NodeIndex>::default();
+
+        for start in &sorted_indices {
+            if seen_vertices.contains(start) {
+                continue;
+            }
+            let mut current_start_path = vec![*start];
+            seen_vertices.insert(*start);
+
+            let mut prv = *start;
+
+            // get the earliest-occurring (i.e. lowest y-val) neighbor
+            while let Some(next) = self
+                .undirected
+                .neighbors(prv)
+                .filter(|node| !seen_vertices.contains(node))
+                .min_by_key(|&node| sorted_indices.iter().position(|&n| n == node).unwrap())
+            {
+                seen_vertices.insert(next);
+                current_start_path.push(next);
+                prv = next;
+            }
+
+            if prv != *start {
+                all_out_paths.push(current_start_path);
+            }
+        }
+        all_out_paths
+    }
+
     /// Use the undirected edges from `undirected` to add directed edges in the order determined
     /// by depth first search.
     ///
     /// Assigns the start indices of each disconnected component to `VertexGraph::components`.
-    pub fn add_dag_edges(&mut self, undirected: &Graph<ObjVertex, f32, Undirected>) {
-        let mut seen_vertices = FxHashSet::<graph::NodeIndex>::default();
-        let mut start_vertices = FxHashSet::<graph::NodeIndex>::default();
-        for start in undirected.node_indices() {
-            if seen_vertices.contains(&start) {
-                continue;
-            }
+    pub fn add_dag_edges(&mut self) {
+        let mut start_vertices = FxHashSet::<NodeIndex>::default();
 
+        let mut start = NodeIndex::from(2u32);
+        let mut prv = NodeIndex::from(1u32);
+
+        while prv != start {
+            start = prv;
             // initialize to start, updated with previous
-            let mut prv = start;
-
             let mut currently_seen_vertices = FxHashSet::<graph::NodeIndex>::default();
 
             // the next node is the neighbor of the previous node that
             // 1. was not previously connected by an edge
             // 2. does not have a path in this graph connecting to the previous node
-            // 3. shares the most neighbors with all previous nodes
+            // 3. has the shortest path to the start node
             //
             // 1-2 ensure that this graph is not cyclic, 3 attempts to make this a localized
             // region in the graph
-            while let Some(next) = undirected
+            while let Some(next) = self
+                .undirected
                 .neighbors(prv)
                 .filter(|&node| {
                     !currently_seen_vertices.contains(&node)
                         && !has_path_connecting(&self.graph, node, prv, None)
                 })
-                .min_by(|&n1, &n2| {
+                .min_by_key(|&node| {
                     petgraph::algo::astar(
-                        &undirected,
-                        n1,
+                        &self.undirected,
+                        node,
                         |finish| finish == start,
-                        |e| *e.weight(),
-                        |_| 0.0,
+                        |_| 1,
+                        |_| 1,
                     )
                     .unwrap()
                     .0
-                    .total_cmp(
-                        &petgraph::algo::astar(
-                            &undirected,
-                            n2,
-                            |finish| finish == start,
-                            |e| *e.weight(),
-                            |_| 0.0,
-                        )
-                        .unwrap()
-                        .0,
-                    )
                 })
             {
                 self.graph.add_edge(prv, next, -1.0);
-                seen_vertices.insert(next);
                 currently_seen_vertices.insert(next);
                 prv = next;
             }
 
-            // if any edges were added as a result of this start
-            if prv != start {
-                start_vertices.insert(start);
-            }
+            start_vertices.insert(start);
         }
-
         self.components = start_vertices;
     }
 
@@ -117,101 +146,22 @@ impl VertexDag {
 
     /// Convert the given `path` to a Vec of polar offsets from each `ObjVertex` to the next.
     pub fn path_to_polar_offs(&self, path: &[graph::NodeIndex]) -> Vec<String> {
-        let mut normalized = Vec::new();
+        let mut offsets = Vec::new();
 
-        let mut prv = path
-            .iter()
+        let mut path_iter = path.iter();
+        let mut prv = path_iter
             .next()
-            .map(|idx| CartesianCoords::from(self.position_at(*idx)))
+            .map(|idx| PolarCoords::from(&CartesianCoords::from(self.position_at(*idx))))
             .unwrap_or_default();
-        for next in path.iter().map(|idx| self.position_at(*idx)) {
-            // the 3d offset from the previous node to this node
-            let mut coords = CartesianCoords::from(next);
-            coords.subtract_with(&prv);
-
-            let polar_coords = PolarCoords::from(&coords);
-
-            normalized.push(polar_coords.to_string());
-
-            prv = CartesianCoords::from(next);
-        }
-        normalized
-    }
-
-    pub fn path_to_buffer(
-        &self,
-        path: &[graph::NodeIndex],
-        display: &Display<WindowSurface>,
-    ) -> Result<VertexBuffer<ObjVertex>, BufferCreationError> {
-        let mut path_vertices = vec![
-            ObjVertex {
-                position: [0.0; 3],
-                normal: [0.0; 3],
-                texture: [-1.0; 2],
-            };
-            self.graph.node_count()
-        ];
-
-        for idx in path.iter() {
-            *path_vertices.get_mut(idx.index()).unwrap() = *self.graph.node_weight(*idx).unwrap();
-        }
-
-        VertexBuffer::new(display, &path_vertices)
-    }
-
-    /// Return the longest continuous path from `start_idx` in this graph
-    pub fn continuous_path_from(&self, start_idx: u32) -> Vec<graph::NodeIndex> {
-        let start_node = graph::NodeIndex::from(start_idx);
-
-        // bellman ford is able to return the longest continuous paths given negative edge
-        // weights and a bit of annoying parsing
-        let bellman_ford = algo::bellman_ford(&self.graph, start_node).unwrap();
-        let mut prev = graph::NodeIndex::from(start_idx);
-
-        let mut path_vertices = Vec::new();
-        // parse the predecessors field to step along the path from `start_idx`
-        // TODO: explain `idx` and `predecessor` relationship
-        while let Some((idx, _)) = bellman_ford
-            .predecessors
-            .iter()
-            .enumerate()
-            .find(|(_, &predecessor)| predecessor == Some(prev))
+        for next in
+            path_iter.map(|idx| PolarCoords::from(&CartesianCoords::from(self.position_at(*idx))))
         {
-            path_vertices.push(prev);
-            prev = graph::NodeIndex::from(u32::try_from(idx).unwrap());
+            prv.subtract_with(&next);
+            offsets.push(prv.to_string());
+
+            prv = next;
         }
-
-        path_vertices
-    }
-
-    /// Return the polar offsets along the path of each connected subgraph
-    pub fn connected_subgraph_polar_offs(&self) -> Vec<Vec<String>> {
-        self.components
-            .iter()
-            .map(|idx| {
-                self.path_to_polar_offs(
-                    &self.continuous_path_from(u32::try_from(idx.index()).unwrap()),
-                )
-            })
-            .collect()
-    }
-
-    /// Return a `VertexBuffer` for each connected subgraph
-    /// TODO: should be iter out
-    pub fn connected_subgraph_buffers(
-        &self,
-        display: &Display<WindowSurface>,
-    ) -> Vec<VertexBuffer<ObjVertex>> {
-        self.components
-            .iter()
-            .map(|idx| {
-                self.path_to_buffer(
-                    &self.continuous_path_from(u32::try_from(idx.index()).unwrap()),
-                    display,
-                )
-                .unwrap()
-            })
-            .collect()
+        offsets
     }
 }
 
@@ -222,7 +172,8 @@ impl From<&ObjData> for VertexDag {
         glium::implement_vertex!(ObjVertex, position, normal, texture);
 
         let mut vertex_graph: Graph<ObjVertex, f32, Directed> = graph::Graph::new();
-        let mut un_vertex_graph: Graph<ObjVertex, f32, Undirected> = graph::Graph::new_undirected();
+        let mut un_vertex_graph: Graph<ObjVertex, usize, Undirected> =
+            graph::Graph::new_undirected();
         let mut seen_vertices = FxHashSet::<usize>::default();
 
         // initialize empty nodes
@@ -265,12 +216,13 @@ impl From<&ObjData> for VertexDag {
                 // parent node should have more incoming edges than child
                 let parent_node = NodeIndex::from(u32::try_from(v1.0).unwrap());
                 let child_node = NodeIndex::from(u32::try_from(v2.0).unwrap());
-                un_vertex_graph.update_edge(parent_node, child_node, 1.0);
+                un_vertex_graph.update_edge(parent_node, child_node, 1);
             }
         }
 
         let mut vertex_graph = VertexDag::new(vertex_graph);
-        vertex_graph.add_dag_edges(&un_vertex_graph);
+        vertex_graph.undirected = un_vertex_graph;
+        vertex_graph.add_dag_edges();
         vertex_graph
     }
 }

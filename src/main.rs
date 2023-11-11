@@ -24,7 +24,7 @@ fn main() {
     let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
     // load assets
-    let data = load::get_objdata(include_bytes!("../assets/r3.obj")).unwrap();
+    let data = load::get_objdata(include_bytes!("../assets/r1.obj")).unwrap();
     // TODO: move texture loading somewhere else
     let texture = image::load(
         Cursor::new(&include_bytes!("../assets/Epona_grp.png")),
@@ -40,11 +40,16 @@ fn main() {
 
     let vertex_graph = graph::VertexDag::from(&data);
 
-    let mut chain: Chain<String> = Chain::of_order(7);
-    for polar_off in vertex_graph.connected_subgraph_polar_offs() {
+    let paths = vertex_graph.get_paths();
+
+    let mut chain: Chain<String> = Chain::of_order(4);
+    for polar_off in paths
+        .iter()
+        .map(|path| vertex_graph.path_to_polar_offs(path))
+    {
         chain.feed(polar_off);
     }
-    let mut gens = chain.iter();
+    let mut chain_iter = chain.iter();
 
     let vertex_buffer = vertex_graph.to_buffer(&display).unwrap();
 
@@ -60,9 +65,6 @@ fn main() {
     let red_shader = shader::red(&display);
     let default_shader = shader::full(&display);
 
-    let subgraph_bufs = vertex_graph.connected_subgraph_buffers(&display);
-    let mut subgraph_iter = subgraph_bufs.iter().cycle();
-
     // rendering loop
     event_loop
         .run(move |event, window_target| {
@@ -75,15 +77,21 @@ fn main() {
                         let mut target = display.draw();
                         target.clear_color_and_depth((0.2, 0.2, 1.0, 1.0), 1.0);
 
+                        let gen_polar: Vec<PolarCoords> = chain_iter
+                            .next()
+                            .unwrap()
+                            .iter()
+                            .map(PolarCoords::from)
+                            .collect();
+
                         // generate a new path and create a buffer
-                        let gen_polar: Vec<PolarCoords> =
-                            gens.next().unwrap().iter().map(PolarCoords::from).collect();
-                        let mut run_pos = CartesianCoords::default();
+                        let mut run_pos = PolarCoords::default();
                         let mut new_vertices = Vec::<ObjVertex>::new();
 
                         for gen_coord in &gen_polar {
-                            run_pos.sum_with(&CartesianCoords::from(gen_coord));
-                            new_vertices.push(run_pos.clone().into());
+                            run_pos.sum_with(gen_coord);
+                            let inc_amount = &CartesianCoords::from(&run_pos);
+                            new_vertices.push(ObjVertex::from(inc_amount.clone()));
                         }
 
                         let generated_buffer = VertexBuffer::new(&display, &new_vertices).unwrap();
