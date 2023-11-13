@@ -1,18 +1,27 @@
-use glium::{uniform, Display, DrawParameters, Frame, Program, Surface, VertexBuffer};
+use glium::{uniforms::EmptyUniforms, Display, DrawParameters, IndexBuffer, Surface, VertexBuffer};
 use glutin::surface::WindowSurface;
+use obj::ObjData;
+use rustc_hash::FxHashSet;
 
-use crate::{camera::State, load::ObjVertex};
+use crate::{
+    camera::State,
+    geometry::winding,
+    load::{self, obj_triangles, ObjVertex},
+    shader,
+};
+use glam::Vec3;
+use rayon::prelude::*;
 
-// TODO: docs
 pub struct Application {
     params: DrawParameters<'static>,
-    light: [f32; 3],
-    diffuse_texture: glium::texture::SrgbTexture2d,
+    display: Display<WindowSurface>,
+    obj_data: ObjData,
     pub camera: State,
 }
 
 impl Application {
-    pub fn new(d_texture: glium::texture::SrgbTexture2d) -> Self {
+    pub fn new(data: &[u8], display: &Display<WindowSurface>) -> Self {
+        let loaded_data = load::get_objdata(data).unwrap();
         Self {
             params: glium::DrawParameters {
                 depth: glium::Depth {
@@ -20,61 +29,89 @@ impl Application {
                     write: true,
                     ..Default::default()
                 },
-                blend: glium::Blend::alpha_blending(),
                 polygon_mode: glium::PolygonMode::Fill,
                 ..Default::default()
             },
-            light: [1.4, 0.4, -0.7f32],
-            diffuse_texture: d_texture,
+            display: display.clone(),
+            obj_data: loaded_data,
             camera: State::new(),
         }
     }
 
-    pub fn draw_frame(
-        &mut self,
-        target: &mut Frame,
-        shader_buffers: &[&ShaderBuffer],
-        display: &Display<WindowSurface>,
-    ) {
-        self.camera.update(display);
-        let uniforms = uniform! {
-            persp_matrix: self.camera.get_perspective(),
-            view_matrix: self.camera.get_view(),
-            u_light: self.light,
-            diffuse_tex: &self.diffuse_texture,
-        };
+    pub fn draw_frame(&mut self) {
+        let mut target = self.display.draw();
+        target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
-        for shader_buffer in shader_buffers {
-            target
-                .draw(
-                    shader_buffer.vertex_buffer,
-                    shader_buffer.index_buffer,
-                    shader_buffer.shader,
-                    &uniforms,
-                    &self.params,
-                )
-                .unwrap();
-        }
-    }
-}
+        self.camera.update(&self.display);
 
-/// Simple struct to link buffers to shaders in order to easily pass into `draw_frame`
-pub struct ShaderBuffer<'a> {
-    vertex_buffer: &'a VertexBuffer<ObjVertex>,
-    index_buffer: &'a glium::IndexBuffer<u32>,
-    shader: &'a Program,
-}
+        let matrix = self.camera.get_perspective() * self.camera.get_view();
 
-impl<'a> ShaderBuffer<'_> {
-    pub fn new(
-        vertex_buffer: &'a VertexBuffer<ObjVertex>,
-        index_buffer: &'a glium::IndexBuffer<u32>,
-        shader: &'a Program,
-    ) -> ShaderBuffer<'a> {
-        ShaderBuffer {
-            vertex_buffer,
-            index_buffer,
-            shader,
-        }
+        // perspective-transform position data from obj file
+        let pos_matrix: Vec<Vec3> = self
+            .obj_data
+            .position
+            .par_iter()
+            .map(|&position| matrix.transform_vector3(Vec3::from_array(position) * 20.0))
+            .collect();
+
+        // perform backface culling by testing clockwiseness
+        let indices: Vec<u32> = obj_triangles(&self.obj_data)
+            .par_iter()
+            .filter(|triangle| {
+                winding(
+                    &triangle
+                        .iter()
+                        .map(|&vertex| *pos_matrix.get(vertex).unwrap())
+                        .collect::<Vec<Vec3>>(),
+                ) < 0.0
+            })
+            .flat_map(|triangle| triangle.par_iter().map(|&idx| u32::try_from(idx).unwrap()))
+            .collect();
+
+        // visible vertices must occur at least once in a non-culled triangle
+        let valid_vertices = FxHashSet::<usize>::from_par_iter(
+            indices.par_iter().map(|&x| usize::try_from(x).unwrap()),
+        );
+
+        // create vertex buffer of only non-culled vertices
+        let pos_matrix = pos_matrix
+            .iter()
+            .enumerate()
+            .map(|(idx, position)| {
+                if valid_vertices.contains(&idx) {
+                    ObjVertex {
+                        position: position.to_array(),
+                        normal: [0.0; 3],
+                        texture: [0.0; 2],
+                    }
+                } else {
+                    ObjVertex {
+                        position: [0.0; 3],
+                        normal: [0.0; 3],
+                        texture: [-1.0; 2],
+                    }
+                }
+            })
+            .collect::<Vec<ObjVertex>>();
+        let vertex_buffer = VertexBuffer::new(&self.display, &pos_matrix).unwrap();
+
+        // create index buffer of only non-culled triangles
+        let index_buffer = IndexBuffer::new(
+            &self.display,
+            glium::index::PrimitiveType::TrianglesList,
+            &indices,
+        )
+        .unwrap();
+
+        target
+            .draw(
+                &vertex_buffer,
+                &index_buffer,
+                &shader::full(&self.display),
+                &EmptyUniforms,
+                &self.params,
+            )
+            .unwrap();
+        target.finish().unwrap();
     }
 }
